@@ -64,7 +64,11 @@ export default function App() {
   useEffect(() => {
     refresh();
   }, [refresh]);
-  useEffect(() => window.scrollTo(0, 0), [pathname]);
+  // Braces matter: newer browsers return a Promise from scrollTo, and an effect
+  // must return nothing (or a cleanup function), or React crashes on unmount.
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [pathname]);
 
   const logout = async () => {
     await api.post('/auth/logout');

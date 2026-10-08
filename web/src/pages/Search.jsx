@@ -14,7 +14,9 @@ export default function Search() {
   const local = useApi(q.length >= 2 ? `/search${qs({ q, medium })}` : null);
   const navigate = useNavigate();
 
-  useEffect(() => setExternal(null), [q, medium]);
+  useEffect(() => {
+    setExternal(null);
+  }, [q, medium]);
 
   const submit = (e) => {
     e.preventDefault();

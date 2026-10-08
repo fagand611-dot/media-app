@@ -26,7 +26,9 @@ export function useApi(path) {
       (error) => setState({ data: null, error, loading: false })
     );
   }, [path]);
-  useEffect(load, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
   return { ...state, reload: load, setData: (fn) => setState((s) => ({ ...s, data: typeof fn === 'function' ? fn(s.data) : fn })) };
 }
 
