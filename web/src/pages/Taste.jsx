@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { api } from '../api.js';
+import Icon from '../components/Icon.jsx';
 import { Loading, MEDIA, useApi } from '../components/ui.jsx';
 
 export function TagCloud({ tags, onPick }) {
@@ -39,7 +40,7 @@ export default function Taste() {
         const options = !tax.data ? [] : kind === 'mood' ? tax.data.moods : [...new Set(Object.values(tax.data.genres).flat())];
         return (
           <>
-            <h1>🧬 Your Taste DNA</h1>
+            <h1>Your Taste DNA</h1>
             <p className="muted">
               Built from {counts.rated} ratings ({Object.entries(counts.byMedium).map(([m, n]) => `${n} ${MEDIA[m].plural.toLowerCase()}`).join(', ')}), your wants and skips, and the tags you've pinned.
               Larger tags carry more weight in your recommendations.
@@ -68,8 +69,8 @@ export default function Taste() {
                   return (
                     <div key={tag} className={`tune-row ${w > 0 ? 'pinned' : w < 0 ? 'banned' : ''}`}>
                       <span>{o}</span>
-                      <button className={w > 0 ? 'on' : ''} title="Boost" onClick={() => setPref(tag, w > 0 ? 0 : 2)}>👍</button>
-                      <button className={w < 0 ? 'on' : ''} title="Avoid" onClick={() => setPref(tag, w < 0 ? 0 : -2)}>👎</button>
+                      <button className={w > 0 ? 'on' : ''} title="Boost" aria-label={`Boost ${o}`} onClick={() => setPref(tag, w > 0 ? 0 : 2)}><Icon name="up" size={16} /></button>
+                      <button className={w < 0 ? 'on' : ''} title="Avoid" aria-label={`Avoid ${o}`} onClick={() => setPref(tag, w < 0 ? 0 : -2)}><Icon name="down" size={16} /></button>
                     </div>
                   );
                 })}

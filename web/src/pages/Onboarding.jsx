@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api.js';
 import { useAuth } from '../App.jsx';
+import Icon, { MEDIUM_ICON } from '../components/Icon.jsx';
 import { Cover, Loading, MEDIA, ScorePicker, useApi } from '../components/ui.jsx';
 
 // Cold start: pick genres and moods, then rate a few well-known titles.
@@ -45,7 +46,7 @@ export default function Onboarding() {
               <p className="muted">Pick as many as you like, in any medium. You can change these later in Taste DNA.</p>
               {Object.entries(genres).map(([medium, list]) => (
                 <section key={medium}>
-                  <h3>{MEDIA[medium].icon} {MEDIA[medium].plural}</h3>
+                  <h3><Icon name={MEDIUM_ICON[medium]} /> {MEDIA[medium].plural}</h3>
                   <div className="chips">
                     {list.map((g) => (
                       <button key={g} className={`chip ${tags.has(`genre:${g}`) ? 'on' : ''}`} onClick={() => toggle(`genre:${g}`)}>{g}</button>
@@ -54,7 +55,7 @@ export default function Onboarding() {
                 </section>
               ))}
               <section>
-                <h3>✨ Moods: the feeling you go looking for</h3>
+                <h3><Icon name="sparkle" /> Moods: the feeling you go looking for</h3>
                 <div className="chips">
                   {moods.map((m) => (
                     <button key={m} className={`chip mood ${tags.has(`mood:${m}`) ? 'on' : ''}`} onClick={() => toggle(`mood:${m}`)}>{m}</button>
@@ -73,7 +74,7 @@ export default function Onboarding() {
               <p className="muted">Skip anything you haven't seen, read or heard. Low scores help as much as high ones.</p>
               {Object.entries(starters).map(([medium, items]) => (
                 <section key={medium}>
-                  <h3>{MEDIA[medium].icon} {MEDIA[medium].plural}</h3>
+                  <h3><Icon name={MEDIUM_ICON[medium]} /> {MEDIA[medium].plural}</h3>
                   <div className="starter-grid">
                     {items.map((item) => (
                       <div key={item.id} className="starter">

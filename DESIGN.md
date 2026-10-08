@@ -55,6 +55,27 @@
 9. **Taste DNA.** Your strongest positive and negative tags, with the option to
    pin or ban a tag.
 
+## 3b. Visual design
+
+Aimed at people in their late 20s to early 40s: calm, easy to scan, and
+quick to act on, on a phone or a laptop.
+
+- **Calm editorial look.** Warm paper background in light mode and warm ink in
+  dark mode (it follows the device setting, or you can pick one on the Me page).
+  One accent colour, serif headlines (Fraunces) and Inter for everything else.
+  Line icons, no emoji.
+- **Typographic posters.** When there's no artwork, each title gets a poster:
+  the medium's colour family, the title in serif, and one of five graphic
+  motifs picked from the title, so posters are easy to tell apart at a glance.
+- **Glanceable.** For You opens with a "Today" strip (new from friends, coming
+  soon, mood of the day, friend lists), and each card jumps to its row. One
+  filter (All / Film / TV / Books / Music) narrows every row at once.
+- **Interactive.** Every poster has a quick-action button that opens a sheet
+  for rating, Want / Watch and Not for me, with a short confirmation toast.
+- **Phone first.** A bottom tab bar (For You, Browse, Radar, Feed, Me) on
+  phones and a top bar on desktop. Library, lists, friends, Taste DNA and the
+  theme setting live under Me.
+
 ## 4. Recommendation engine (v1: hybrid, explainable, no ML infrastructure)
 
 Each item becomes a sparse feature vector:

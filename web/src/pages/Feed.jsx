@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import Icon from '../components/Icon.jsx';
 import { Cover, Empty, Loading, MediumBadge, Score, timeAgo, useApi } from '../components/ui.jsx';
 
 const VERB = { want: 'wants to check out', in_progress: 'is into', done: 'finished' };
@@ -16,7 +17,7 @@ export default function Feed() {
               {events.map((e, i) =>
                 e.kind === 'list' ? (
                   <li key={`l${e.list.id}-${i}`}>
-                    <div className="feed-icon">📝</div>
+                    <div className="feed-icon"><Icon name="list" /></div>
                     <div>
                       <Link to={`/u/${e.user.username}`}><b>{e.user.display_name}</b></Link> updated a list{' '}
                       <Link to={`/lists/${e.list.id}`}><b>{e.list.title}</b></Link> <span className="muted">({e.list.count} items)</span>

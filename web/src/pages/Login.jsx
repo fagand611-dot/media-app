@@ -27,8 +27,8 @@ export default function Login() {
   return (
     <div className="auth">
       <div className="auth-hero">
-        <h1>✦ Tastemate</h1>
-        <p>One taste profile for film, TV, music and books. Recommendations that explain themselves, plus lists and reviews from the friends whose taste you trust.</p>
+        <h1>tastemate</h1>
+        <p>Film, TV, music and books, in one place. Picks that explain themselves, plus lists and reviews from the friends whose taste you trust.</p>
       </div>
       <form className="panel auth-form" onSubmit={submit}>
         <h2>{mode === 'login' ? 'Welcome back' : 'Create your account'}</h2>

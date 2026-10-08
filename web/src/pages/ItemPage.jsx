@@ -102,7 +102,7 @@ function MyEntry({ item, mine, onSaved }) {
       <div className="state-buttons">
         {(released ? ['want', 'in_progress', 'done', 'dismissed'] : ['want', 'dismissed']).map((s) => (
           <button key={s} className={mine?.state === s ? 'on' : ''} onClick={() => put({ state: s })}>
-            {!released && s === 'want' ? '🔔 Watch for it' : STATE_LABEL[s]}
+            {!released && s === 'want' ? 'Watch for it' : STATE_LABEL[s]}
           </button>
         ))}
         {mine && <button className="ghost" onClick={remove}>Clear</button>}
