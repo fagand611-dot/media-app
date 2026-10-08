@@ -14,6 +14,11 @@ async function request(method, path, body) {
     body: body ? JSON.stringify(body) : undefined,
   });
   const data = await res.json().catch(() => ({}));
+  // The server's generic 404 (as opposed to e.g. "Item not found") means this
+  // address doesn't exist on it, which happens when an older server is still running.
+  if (res.status === 404 && data.error === 'Not found') {
+    throw new ApiError(404, 'The server is out of date. Stop npm run dev, run "npx kill-port 3001 5173", then start npm run dev again.');
+  }
   if (!res.ok) throw new ApiError(res.status, data.error || res.statusText);
   return data;
 }

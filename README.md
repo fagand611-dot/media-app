@@ -21,6 +21,16 @@ Sign in as `demo` / `demo1234` to see a profile with friends, a feed and lists
 already set up, or create your own account and go through onboarding. To try
 the social features with your own account, add `maya`, `sam` or `jo` as friends.
 
+### If something looks out of date or broken
+
+`npm run dev` refuses to start if ports 3001 or 5173 are already taken, because
+an older run still holding them would serve old code. Stop it and try again:
+
+```bash
+npx kill-port 3001 5173
+npm run dev
+```
+
 ### Production
 
 ```bash
