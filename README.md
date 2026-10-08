@@ -41,7 +41,13 @@ npm run build && npm start   # serves the API and the built app on :3001
 ## What's in it
 
 - **Onboarding:** pick genres and moods per medium, then rate a few well-known titles.
-- **Discover:** a hybrid recommender (taste profile, friends weighted by taste
+- **For You:** the home page. One top pick, then themed rows that each say why
+  they're there: *New in your circle* (friends' recent high ratings),
+  *Because you loved X*, *The feel of X, beyond the screen* (the same mood in
+  another medium), *In a dark mood*, *Coming soon for you*, *Classics you
+  haven't got to*, *Fresh from your friends' lists* and *Something different*.
+  Featured favourites and moods rotate daily.
+- **Browse:** the full ranked list from a hybrid recommender (taste profile, friends weighted by taste
   similarity, and community quality) with a diversity re-rank so media and genres
   mix. Each card says why it was picked.
 - **Radar:** upcoming, announced and in-production titles ranked by your taste, with a watchlist.
@@ -59,9 +65,10 @@ server/
   app.js            Express app (createApp is used by the tests too)
   db.js             schema + helpers (node:sqlite)
   recommender.js    pure scoring / ranking / explanations
+  shelves.js        arranges scores into the For You page's themed rows
   taxonomy.js       genres, moods, genre→mood map, provider genre aliases
   services.js       shared queries (library, friends, profiles)
-  routes/           auth, items + library, discover (recs/radar/taste/onboarding), social
+  routes/           auth, items + library, discover (recs/radar/taste/onboarding), social, home
   providers/        tmdb, openlibrary, musicbrainz
   seed/             starter catalogue + demo users
 web/src/            React SPA (pages/, components/ui.jsx, styles.css)

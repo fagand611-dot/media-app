@@ -14,8 +14,8 @@ export default function Discover() {
     <>
       <div className="page-head">
         <div>
-          <h1>Discover</h1>
-          <p className="muted">Picked for your taste across every medium, old and new. Each rating or skip sharpens the next batch.</p>
+          <h1>Browse recommendations</h1>
+          <p className="muted">Every recommendation in one ranked list, filterable by medium. Each rating or skip sharpens the next batch.</p>
         </div>
         <button onClick={state.reload}>↻ Refresh</button>
       </div>

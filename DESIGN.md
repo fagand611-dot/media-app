@@ -31,7 +31,14 @@
 1. **Onboarding (cold start).** Pick the genres and moods you like in each
    medium, then rate a handful of well-known titles. That's enough for useful
    first recommendations.
-2. **Discover.** A ranked feed, filterable by medium, with reasons on every
+2. **For You (home).** Instead of one long list, a single top pick and themed
+   rows, each with its own reason for existing: *New in your circle* comes
+   first, then *Because you loved X*, a cross-medium *The feel of X, beyond the
+   screen*, a mood of the day, *Coming soon for you*, classics, recent releases,
+   friends' lists and *Something different*. Each title appears only once on
+   the page, and the featured favourite and mood rotate daily so the page
+   changes. (`server/shelves.js`)
+2b. **Browse.** The full ranked feed, filterable by medium, with reasons on every
    card. One-tap actions: rate, *Want*, *Not for me*. Each action updates the
    profile immediately.
 3. **Search and add.** Search the local catalogue and external sources (TMDB for

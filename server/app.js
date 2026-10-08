@@ -9,6 +9,7 @@ import authRoutes from './routes/auth.js';
 import itemRoutes from './routes/items.js';
 import discoverRoutes from './routes/discover.js';
 import socialRoutes from './routes/social.js';
+import homeRoutes from './routes/home.js';
 
 export function createApp({ db, providers = createProviders() }) {
   const app = express();
@@ -23,6 +24,7 @@ export function createApp({ db, providers = createProviders() }) {
   itemRoutes(api, ctx);
   discoverRoutes(api, ctx);
   socialRoutes(api, ctx);
+  homeRoutes(api, ctx);
   api.use((_req, res) => res.status(404).json({ error: 'Not found' }));
   app.use('/api', api);
 

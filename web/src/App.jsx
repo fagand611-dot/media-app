@@ -3,6 +3,7 @@ import { NavLink, Navigate, Route, Routes, useNavigate } from 'react-router-dom'
 import { api } from './api.js';
 import Login from './pages/Login.jsx';
 import Onboarding from './pages/Onboarding.jsx';
+import Home from './pages/Home.jsx';
 import Discover from './pages/Discover.jsx';
 import Radar from './pages/Radar.jsx';
 import Search from './pages/Search.jsx';
@@ -19,7 +20,8 @@ const AuthCtx = createContext(null);
 export const useAuth = () => useContext(AuthCtx);
 
 const NAV = [
-  ['/', 'Discover'],
+  ['/', 'For You'],
+  ['/discover', 'Browse'],
   ['/radar', 'Radar'],
   ['/search', 'Search'],
   ['/library', 'Library'],
@@ -63,7 +65,8 @@ export default function App() {
       </header>
       <main>
         <Routes>
-          <Route path="/" element={user.onboarded ? <Discover /> : <Navigate to="/welcome" replace />} />
+          <Route path="/" element={user.onboarded ? <Home /> : <Navigate to="/welcome" replace />} />
+          <Route path="/discover" element={<Discover />} />
           <Route path="/welcome" element={<Onboarding />} />
           <Route path="/radar" element={<Radar />} />
           <Route path="/search" element={<Search />} />

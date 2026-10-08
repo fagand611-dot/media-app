@@ -200,3 +200,26 @@ test('items: manual add, search, taste tags', async () => {
   const taste = (await c.get('/taste')).body;
   assert.equal(taste.likes[0].tag, 'mood:dark');
 });
+
+test('home: curated shelves, circle picks from friends, nothing you have logged', async () => {
+  const me = await signup('homer');
+  const pal = await signup('homer_pal');
+  await me.post('/onboarding', { tags: ['genre:horror', 'mood:dark'], ratings: [{ itemId: 5, score: 10 }] });
+
+  let home = (await me.get('/home')).body;
+  assert.ok(home.hero?.item);
+  assert.equal(home.shelves.find((s) => s.id === 'circle').kind, 'cta', 'no friends yet');
+
+  await befriend(me, pal, 'homer_pal');
+  await pal.put('/library/7', { score: 9, review: 'So good' });
+  await pal.put('/library/8', { score: 4 }); // too low to be a circle pick
+  home = (await me.get('/home')).body;
+  const circle = home.shelves.find((s) => s.id === 'circle');
+  assert.equal(circle.kind, 'circle');
+  assert.deepEqual(circle.items.map((e) => e.item.id), [7]);
+  assert.equal(circle.items[0].by[0].name, 'homer_pal');
+
+  const shown = [home.hero.item.id, ...home.shelves.flatMap((s) => (s.items || []).map((e) => e.item.id))];
+  assert.ok(!shown.includes(5), 'items you already rated never appear');
+  assert.equal(new Set(shown).size, shown.length, 'no duplicates');
+});
