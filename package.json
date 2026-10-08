@@ -8,11 +8,14 @@
     "node": ">=22.13"
   },
   "scripts": {
+    "predev": "node scripts/check-node.js",
     "dev": "node scripts/dev.js",
     "dev:server": "node --watch --disable-warning=ExperimentalWarning server/index.js",
     "dev:web": "vite",
     "build": "vite build",
+    "prestart": "node scripts/check-node.js",
     "start": "node --disable-warning=ExperimentalWarning server/index.js",
+    "preseed": "node scripts/check-node.js",
     "seed": "node --disable-warning=ExperimentalWarning server/seed/seed.js",
     "test": "node --disable-warning=ExperimentalWarning --test \"test/*.test.js\""
   },
