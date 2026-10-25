@@ -88,6 +88,62 @@ CREATE TABLE IF NOT EXISTS list_items (
   added_at TEXT NOT NULL DEFAULT (datetime('now')),
   PRIMARY KEY (list_id, item_id)
 );
+
+-- Taste graph (DESIGN.md §9). A save is anything kept in another app; a spot
+-- is a real-world event, place or product that saves can point to.
+CREATE TABLE IF NOT EXISTS spots (
+  id INTEGER PRIMARY KEY,
+  kind TEXT NOT NULL CHECK (kind IN ('event','place','product')),
+  title TEXT NOT NULL,
+  city TEXT,
+  venue TEXT,
+  creators TEXT NOT NULL DEFAULT '[]',
+  tags TEXT NOT NULL DEFAULT '[]',
+  description TEXT,
+  starts_at TEXT,
+  ends_at TEXT,
+  opened_at TEXT,
+  price TEXT,
+  url TEXT,
+  popularity REAL NOT NULL DEFAULT 0.5,
+  source TEXT NOT NULL DEFAULT 'local',
+  external_id TEXT,
+  is_demo INTEGER NOT NULL DEFAULT 0,
+  UNIQUE (source, external_id)
+);
+CREATE INDEX IF NOT EXISTS spots_city ON spots(city);
+
+CREATE TABLE IF NOT EXISTS saves (
+  id INTEGER PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL CHECK (kind IN ('song','place','look','product','art','food','event','other')),
+  title TEXT NOT NULL,
+  creator TEXT,
+  source TEXT NOT NULL CHECK (source IN ('spotify','instagram','google_maps','pinterest','manual','tastemate')),
+  collection TEXT,
+  url TEXT,
+  note TEXT,
+  city TEXT,
+  tags TEXT NOT NULL DEFAULT '[]',
+  spot_id INTEGER REFERENCES spots(id) ON DELETE SET NULL,
+  external_key TEXT,
+  saved_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (user_id, source, external_key)
+);
+CREATE INDEX IF NOT EXISTS saves_user ON saves(user_id);
+CREATE INDEX IF NOT EXISTS saves_spot ON saves(spot_id);
+
+CREATE TABLE IF NOT EXISTS spot_dismissals (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  spot_id INTEGER NOT NULL REFERENCES spots(id) ON DELETE CASCADE,
+  PRIMARY KEY (user_id, spot_id)
+);
+
+CREATE TABLE IF NOT EXISTS user_settings (
+  user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  home_city TEXT
+);
 `;
 
 const JSON_COLS = ['creators', 'genres', 'moods'];
@@ -151,4 +207,31 @@ export function upsertItem(db, item) {
       item.is_demo ? 1 : 0
     );
   return hydrateItem(db.prepare('SELECT * FROM items WHERE id = ?').get(r.lastInsertRowid));
+}
+
+/** Parse a saves or spots row's JSON columns. */
+export function hydrateSave(row) {
+  return row && { ...row, tags: JSON.parse(row.tags || '[]') };
+}
+
+export function hydrateSpot(row) {
+  return row && { ...row, tags: JSON.parse(row.tags || '[]'), creators: JSON.parse(row.creators || '[]'), is_demo: !!row.is_demo };
+}
+
+export function upsertSpot(db, s) {
+  const existing = s.external_id && db.prepare('SELECT * FROM spots WHERE source = ? AND external_id = ?').get(s.source ?? 'local', String(s.external_id));
+  if (existing) return hydrateSpot(existing);
+  const r = db
+    .prepare(
+      `INSERT INTO spots (kind, title, city, venue, creators, tags, description, starts_at, ends_at, opened_at,
+                          price, url, popularity, source, external_id, is_demo)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+    )
+    .run(
+      s.kind, s.title, s.city ?? null, s.venue ?? null,
+      JSON.stringify(s.creators ?? []), JSON.stringify(s.tags ?? []), s.description ?? null,
+      s.starts_at ?? null, s.ends_at ?? null, s.opened_at ?? null, s.price ?? null, s.url ?? null,
+      s.popularity ?? 0.5, s.source ?? 'local', s.external_id != null ? String(s.external_id) : null, s.is_demo ? 1 : 0
+    );
+  return hydrateSpot(db.prepare('SELECT * FROM spots WHERE id = ?').get(r.lastInsertRowid));
 }

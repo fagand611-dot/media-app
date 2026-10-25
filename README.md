@@ -4,6 +4,12 @@ Cross-media taste profiles for **film, TV, music and books**: recommendations
 that explain themselves, a radar of upcoming releases, and lists, reviews and
 scores shared with friends.
 
+**Taste graph:** import what you've saved on Spotify, Instagram, Google Maps
+and Pinterest (**Saves**), see the patterns running across them, and get
+events, places and things to buy picked for a city and dates (**Next**),
+each explained by your own saves. The demo account comes with sample saves,
+and sample spots in Bangkok, London, Dublin and Tokyo.
+
 See [DESIGN.md](DESIGN.md) for the product thinking, the recommendation model,
 the data model and the roadmap.
 

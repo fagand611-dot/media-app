@@ -36,7 +36,18 @@ const ICONS = {
   note: [P('M5 3h11l4 4v14H5z'), P('M9 12h7M9 16h5')],
   heart: [P('M12 20s-7-4.4-9-9a5 5 0 0 1 9-3 5 5 0 0 1 9 3c-2 4.6-9 9-9 9z')],
   clock: [C(12, 12, 9), P('M12 7v5l3 2')],
+  pin: [P('M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z'), C(12, 9.5, 2.5)],
+  bag: [P('M5 8h14l-1 13H6z'), P('M9 8V6a3 3 0 0 1 6 0v2')],
+  ticket: [P('M3 8a2 2 0 0 0 2-2h14a2 2 0 0 0 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 0-2 2H5a2 2 0 0 0-2-2v-2a2 2 0 0 0 0-4z'), P('M14 6v12')],
+  upload: [P('M12 15V3M7 8l5-5 5 5'), P('M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4')],
+  image: [<rect key="r" x="3" y="3" width="18" height="18" rx="2" />, C(9, 9, 2), P('m21 15-5-5L5 21')],
+  shirt: [P('M8 3 3 6l2 5 3-1v11h8V10l3 1 2-5-5-3a4 4 0 0 1-8 0z')],
+  cup: [P('M4 8h13v5a6 6 0 0 1-6 6h-1a6 6 0 0 1-6-6z'), P('M17 10h2a2 2 0 0 1 0 4h-2'), P('M8 2v3M12 2v3')],
+  graph: [C(6, 6, 2.5), C(18, 7, 2.5), C(12, 18, 2.5), P('M8.3 7 15.6 7M7.2 8.2l3.6 7.6M16.8 9.2l-3.6 6.6')],
 };
+
+export const SAVE_ICON = { song: 'music', place: 'pin', look: 'shirt', product: 'bag', art: 'image', food: 'cup', event: 'ticket', other: 'bookmark' };
+export const SPOT_ICON = { event: 'ticket', place: 'pin', product: 'bag' };
 
 export const MEDIUM_ICON = { movie: 'film', tv: 'tv', book: 'book', music: 'music' };
 

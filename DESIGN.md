@@ -2,6 +2,10 @@
 
 > One place to learn your taste across **film, TV, music and books**, get
 > recommendations that explain themselves, and share them with friends.
+>
+> **Taste graph (§9):** everything you save everywhere (Spotify, Instagram,
+> Google Maps, Pinterest), connected into *what should I do, buy or go to
+> next*, at home tomorrow or on a trip to Bangkok.
 
 ## 1. The problem, restated
 
@@ -165,11 +169,88 @@ web/ (React + Vite SPA)  ──/api──▶  server/ (Node + Express)
 - No tracking, and nothing is sent to third parties except search queries to
   the catalogue APIs you enable.
 
-## 8. Roadmap
+## 9. Taste graph: saves from everywhere → what's next
+
+### The problem
+
+You save constantly and use almost none of it. Songs on Spotify, outfits and
+pastry accounts on Instagram, bars on Google Maps, rooms on Pinterest: four
+fragments of one taste, each locked in an app that only recommends from its
+own catalogue. Then you plan a trip to Bangkok and forget the jazz café you
+starred two years ago, or you're home wondering what to do tomorrow and only
+the big events reach you. The small thing you'd love is never pushed to you.
+
+### Two layers, built in order
+
+| Layer | What it is | Where |
+|---|---|---|
+| **A. My saves, connected** | Saves from every app land in one list, tagged with a shared vocabulary (song, place, look, food… plus vibes: *jazz, intimate, moody, pastry, tailoring*). Recurring combinations become visible **patterns**: "moody · dark · atmospheric: 1 song, 2 looks, 1 place, 1 artwork from Spotify, Instagram, Maps and Pinterest". | `/saves`, `server/taste-graph.js` `findPatterns` |
+| **B. Taste → action** | One profile from all saves (plus your film/music moods at half weight) ranks real **spots** (events, places, products) for a city and dates. Every pick says *which of your saves* point to it. | `/next`, `rankSpots` |
+
+B only works once A exists; that's why import and tagging come first.
+
+### How it works
+
+- **Import** (`server/importers.js`). The platforms offer no "read my saves"
+  API, but all of them let you download your own data. We parse those
+  exports, accepting several shapes because the formats drift over time:
+  Spotify `YourLibrary.json`, Instagram `saved_collections.json` /
+  `saved_posts.json`, Google Takeout `Saved Places.json` or list CSVs, and
+  pasted lines for Pinterest. Re-importing is idempotent (`UNIQUE(user, source, key)`).
+- **Tagging** (`taxonomy.js` `autoTag`). Keyword rules over title, creator,
+  collection name and note map onto shared tags. Music genres carry their
+  moods across, so a jazz track is also *chill* and *cerebral*, the same
+  words a listening bar is tagged with. Songs by artists already in the
+  catalogue inherit their genres and moods. Users can retag anything.
+- **Profile** = Σ over saves of `1/√(#tags)` per tag, plus media `mood:`/`genre:`
+  weights scaled to `0.5 × w/max`.
+- **Spot score** `= 0.6·cosine(profile, spot) + 0.2·tanh(0.6·friends who saved it)
+  + 0.1·just opened (≤ 60 days) + 0.1·(1 − popularity)`. The last term is
+  deliberate: it favours the **under-the-radar** things you'd never see
+  advertised.
+- **Filters:** city (products with no city ship anywhere), and events must
+  overlap the date range (Tomorrow / This weekend / Next 2 weeks / Trip dates).
+- **Explanations** come from your own saves, grouped by app:
+  *"jazz: 4 on Spotify, 2 on Google Maps, like 'Jazz café with a record wall'"*,
+  *"Maya saved it"*, *"Just opened, 9 days ago"*.
+- **"You already saved these in Bangkok"**: your own saves in the chosen city,
+  shown first, which is the trip-planning memory the problem describes.
+- Saving a spot turns it into a save (`source = tastemate`), so acting feeds
+  the graph. Dismissing hides it.
+
+### Data model additions
+
+```
+spots(id, kind[event|place|product], title, city, venue, creators[], tags[], description,
+      starts_at, ends_at, opened_at, price, url, popularity 0..1, source, external_id, is_demo)
+saves(id, user_id, kind, title, creator, source[spotify|instagram|google_maps|pinterest|manual|tastemate],
+      collection, url, note, city, tags[], spot_id?, external_key, saved_at)
+spot_dismissals(user_id, spot_id)
+user_settings(user_id, home_city)
+```
+
+### Honest feasibility
+
+| Piece | Status today | Notes |
+|---|---|---|
+| Spotify saves | **Feasible.** Export works now; the Web API (`/me/tracks`, OAuth) can sync live. | The API's artist genres would replace the keyword guessing for songs. New apps start in a limited development mode and need Spotify's approval for wider access. |
+| Instagram saves | **Export only.** No API exposes saved posts. | The export has the account and link but **no caption or image**, so collection names carry most of the signal. Next step: fetch public post metadata or let people share posts into the app (share sheet), then tag the image with a vision model. |
+| Google Maps saves | **Export only** (Takeout). No API for starred places. | Gives name, address and URL, which is plenty. The Places API can then add categories and opening hours. |
+| Pinterest | **Feasible** via API v5 (boards and pins, OAuth); paste works today. | |
+| Events and venues ("spots") | **The hard part.** The demo uses sample data. | Real coverage means combining ticketing and listings APIs (e.g. Ticketmaster, Eventbrite, Resident Advisor, Dice, local listing sites) and venue data (Google Places, Foursquare). Small and new places are exactly the long tail these sources miss, so curation, partnerships and user-submitted spots matter. |
+| Products | **Feasible with affiliate feeds** (retailer and affiliate-network product feeds), with stock and sale data where retailers share it. | Affiliate revenue is also the obvious business model. |
+| Tagging quality | Keyword rules are the v1. | Next: text and image embeddings, or an LLM that tags a save from its caption or image into the shared vocabulary. Cosine scoring stays the same. |
+| Privacy | Saves stay private. Only spot saves are visible to friends, as a reason. | Exports contain personal data, so import only the saves files and keep them on the server. |
+
+## 10. Roadmap
 
 **MVP (this build):** everything in §3, plus the seed catalogue and demo friends.
 
 **Next:**
+- Taste graph: live Spotify and Pinterest sync over OAuth, a share-sheet
+  "save to Tastemate" for Instagram posts and links, real event and venue
+  feeds per city, and image and LLM tagging (see §9 *Honest feasibility*).
+- Notifications for "a show you'd love is on near you this week".
 - Scheduled sync of upcoming releases from TMDB, MusicBrainz and publishers, with
   notifications when something on your watchlist releases or gets a date.
 - Import history from Letterboxd, Goodreads, Last.fm and Trakt (CSV/API), the

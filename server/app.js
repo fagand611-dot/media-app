@@ -10,10 +10,13 @@ import itemRoutes from './routes/items.js';
 import discoverRoutes from './routes/discover.js';
 import socialRoutes from './routes/social.js';
 import homeRoutes from './routes/home.js';
+import savesRoutes from './routes/saves.js';
 
 export function createApp({ db, providers = createProviders() }) {
   const app = express();
   app.disable('x-powered-by');
+  // Export files from other apps can be large; everything else stays small.
+  app.use('/api/saves/import', express.json({ limit: '8mb' }));
   app.use(express.json({ limit: '100kb' }));
   app.use(cookieParser());
   app.use(loadUser(db));
@@ -25,6 +28,7 @@ export function createApp({ db, providers = createProviders() }) {
   discoverRoutes(api, ctx);
   socialRoutes(api, ctx);
   homeRoutes(api, ctx);
+  savesRoutes(api, ctx);
   api.use((_req, res) => res.status(404).json({ error: 'Not found' }));
   app.use('/api', api);
 

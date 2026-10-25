@@ -5,6 +5,9 @@ import { useApi } from '../components/ui.jsx';
 import { useTheme } from '../theme.js';
 
 const LINKS = [
+  ['/saves', 'Saves', 'graph', 'Your saves from every app, and their patterns'],
+  ['/discover', 'Browse', 'compass', 'Film, TV, music and book picks'],
+  ['/radar', 'Radar', 'radar', 'Upcoming releases for your taste'],
   ['/library', 'Library', 'bookmark', 'Rated, wanted and in progress'],
   ['/lists', 'Lists', 'list', 'Your lists and your friends’'],
   ['/friends', 'Friends', 'users', 'Requests and taste matches'],

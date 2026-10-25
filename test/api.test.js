@@ -223,3 +223,70 @@ test('home: curated shelves, circle picks from friends, nothing you have logged'
   assert.ok(!shown.includes(5), 'items you already rated never appear');
   assert.equal(new Set(shown).size, shown.length, 'no duplicates');
 });
+
+test('taste graph: import, add, retag, graph, next, save and dismiss spots', async () => {
+  const me = await signup('grapher');
+  const pal = await signup('grapher_pal');
+  const other = await signup('grapher_other');
+
+  // Import is idempotent: the same file twice adds nothing the second time.
+  const lib = JSON.stringify({ tracks: [{ artist: 'Miles Davis', track: 'So What', uri: 'spotify:track:1' }, { artist: 'Bill Evans', track: 'Blue in Green', uri: 'spotify:track:2' }] });
+  let r = await me.post('/saves/import', { source: 'spotify', text: lib });
+  assert.equal(r.body.added, 2);
+  r = await me.post('/saves/import', { source: 'spotify', text: lib });
+  assert.deepEqual([r.body.added, r.body.skipped], [0, 2]);
+  assert.equal((await me.post('/saves/import', { source: 'nope', text: lib })).status, 400);
+
+  r = await me.post('/saves/import', { source: 'google_maps', text: 'Title,Note,URL\nListening bar,jazz and vinyl,https://maps.google.com/?cid=9\n' });
+  assert.equal(r.body.added, 1);
+  const { save } = (await me.post('/saves', { title: 'Candlelit wine bar', city: 'Dublin', url: 'javascript:x' })).body;
+  assert.equal(save.kind, 'place');
+  assert.equal(save.url, null);
+  assert.ok(save.tags.includes('intimate'));
+
+  let saves = (await me.get('/saves')).body.saves;
+  const song = saves.find((s) => s.title === 'So What');
+  assert.equal((await me.patch(`/saves/${song.id}`, { tags: ['Jazz', 'chill', 'jazz'] })).body.save.tags.join(), 'jazz,chill');
+  assert.equal((await other.patch(`/saves/${song.id}`, { tags: [] })).status, 404, 'saves are private');
+  assert.equal((await other.del(`/saves/${song.id}`)).status, 404);
+  await me.patch(`/saves/${saves.find((s) => s.title === 'Blue in Green').id}`, { tags: ['jazz', 'chill'] });
+
+  const graph = (await me.get('/graph')).body;
+  assert.equal(graph.total, 4);
+  assert.ok(graph.tags.some((t) => t.tag === 'jazz'));
+  assert.ok(graph.patterns.some((p) => p.tags.includes('jazz') && p.kinds.song && p.kinds.place));
+
+  // Next in Bangkok over the seeded sample spots.
+  await befriend(me, pal, 'grapher_pal');
+  let next = (await me.get('/next?city=bangkok')).body;
+  assert.equal(next.city, 'Bangkok');
+  const jazz = next.events.find((e) => e.spot.tags.includes('jazz'));
+  assert.ok(jazz, 'a jazz event is suggested');
+  assert.ok(jazz.reasons.some((x) => x.type === 'saves'));
+  assert.ok(next.events.every((e) => e.spot.city === 'Bangkok'));
+  assert.ok(next.products.every((e) => !e.spot.city || e.spot.city === 'Bangkok'));
+
+  // A friend's save shows up as a reason.
+  const place = next.places[0].spot;
+  await pal.post(`/spots/${place.id}/save`);
+  next = (await me.get('/next?city=Bangkok')).body;
+  assert.deepEqual(next.places.find((p) => p.spot.id === place.id).reasons.find((x) => x.type === 'friends').names, ['grapher_pal']);
+
+  // Saving moves it into your plan and your saves; dismissing hides it.
+  await me.post(`/spots/${jazz.spot.id}/save`);
+  await me.post(`/spots/${place.id}/dismiss`);
+  next = (await me.get('/next?city=Bangkok')).body;
+  assert.ok(!next.events.some((e) => e.spot.id === jazz.spot.id));
+  assert.ok(!next.places.some((p) => p.spot.id === place.id));
+  assert.deepEqual(next.saved.map((s) => s.spot.id), [jazz.spot.id]);
+  saves = (await me.get('/saves')).body.saves;
+  assert.ok(saves.some((s) => s.spot_id === jazz.spot.id && s.source === 'tastemate'));
+
+  // Home city is the default; your own saves there are surfaced.
+  await me.put('/settings', { home_city: 'Dublin' });
+  next = (await me.get('/next')).body;
+  assert.equal(next.city, 'Dublin');
+  assert.deepEqual(next.yourSaves.map((s) => s.title), ['Candlelit wine bar']);
+  assert.equal((await me.get('/next?from=2026-02-01&to=2026-01-01')).status, 400);
+  assert.equal((await me.post('/spots/99999/save')).status, 404);
+});

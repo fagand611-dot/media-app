@@ -1,0 +1,211 @@
+// The taste graph: saves from every app become one tag profile, recurring
+// combinations of tags become visible "patterns", and the profile ranks
+// real-world spots (events, places, products) for a city and a date range.
+//
+// Pure functions, like recommender.js: routes load rows, this scores them.
+// See DESIGN.md §9.
+import { cosine, toPercent } from './recommender.js';
+
+export const SPOT_BLEND = { content: 0.6, social: 0.2, fresh: 0.1, gem: 0.1 };
+// How much your film/TV/music/book profile counts next to your saves.
+export const MEDIA_WEIGHT = 0.5;
+// Spots this new (days since opening) get the "just opened" boost.
+const FRESH_DAYS = 60;
+// Below this popularity a spot counts as a hidden gem.
+const GEM_POPULARITY = 0.35;
+
+/** A save's feature tags: its own tags plus its creator (artist, account, brand). */
+export function saveTags(save) {
+  const tags = [...(save.tags || [])];
+  if (save.creator) tags.push(`creator:${save.creator.toLowerCase()}`);
+  return tags;
+}
+
+/**
+ * One profile from saves, optionally blended with the media profile from
+ * recommender.buildProfile (its "mood:dark" / "genre:jazz" keys become plain
+ * tags, so a dark-jazz record collection counts toward a dark jazz bar).
+ */
+export function tasteProfile(saves, mediaProfile = new Map()) {
+  const p = new Map();
+  const add = (k, w) => p.set(k, (p.get(k) || 0) + w);
+  for (const s of saves) {
+    const tags = saveTags(s);
+    if (!tags.length) continue;
+    const w = 1 / Math.sqrt(tags.length);
+    for (const t of tags) add(t, w);
+  }
+  let max = 0;
+  for (const [k, v] of mediaProfile) if (/^(mood|genre):/.test(k)) max = Math.max(max, v);
+  if (max > 0) {
+    for (const [k, v] of mediaProfile) {
+      if (v > 0 && /^(mood|genre):/.test(k)) add(k.split(':')[1], (MEDIA_WEIGHT * v) / max);
+    }
+  }
+  return p;
+}
+
+/** Strongest tags, for the tag cloud. */
+export function topSaveTags(profile, n = 24) {
+  return [...profile.entries()]
+    .filter(([k]) => !k.startsWith('creator:'))
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, n)
+    .map(([tag, w]) => ({ tag, weight: +w.toFixed(3) }));
+}
+
+/**
+ * Recurring combinations of tags across your saves, e.g. "moody · jazz ·
+ * intimate" showing up in songs, places and looks. Greedy: take the
+ * strongest tag not yet in a pattern as the seed, describe it with the two
+ * tags it co-occurs with most, and keep it if the saves carrying the seed
+ * span more than one kind of thing or more than one app.
+ */
+export function findPatterns(saves, { max = 5, minSaves = 3 } = {}) {
+  const weight = new Map();
+  const co = new Map();
+  const tagged = saves.map((s) => ({ s, tags: [...new Set(s.tags || [])] })).filter((x) => x.tags.length);
+  for (const { tags } of tagged) {
+    for (const a of tags) {
+      weight.set(a, (weight.get(a) || 0) + 1);
+      for (const b of tags) {
+        if (a === b) continue;
+        if (!co.has(a)) co.set(a, new Map());
+        co.get(a).set(b, (co.get(a).get(b) || 0) + 1);
+      }
+    }
+  }
+  const used = new Set();
+  const out = [];
+  for (const [seed] of [...weight.entries()].sort((a, b) => b[1] - a[1])) {
+    if (out.length >= max) break;
+    if (used.has(seed)) continue;
+    const partners = [...(co.get(seed) || new Map()).entries()]
+      .filter(([, n]) => n >= 2)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 2)
+      .map(([t]) => t);
+    const tags = [seed, ...partners];
+    const support = tagged.filter(({ tags: ts }) => ts.includes(seed));
+    if (support.length < minSaves) continue;
+    const kinds = countBy(support, (x) => x.s.kind);
+    const sources = countBy(support, (x) => x.s.source);
+    // A pattern is only interesting if it crosses kinds or apps.
+    if (Object.keys(kinds).length < 2 && Object.keys(sources).length < 2) continue;
+    tags.forEach((t) => used.add(t));
+    out.push({
+      tags,
+      count: support.length,
+      kinds,
+      sources,
+      examples: support.slice(0, 4).map(({ s }) => ({ id: s.id, title: s.title, kind: s.kind, source: s.source })),
+    });
+  }
+  return out;
+}
+
+function countBy(list, key) {
+  const m = {};
+  for (const x of list) m[key(x)] = (m[key(x)] || 0) + 1;
+  return m;
+}
+
+/** Does an event run at some point between from and to (ISO dates, inclusive)? */
+export function inWindow(spot, from, to) {
+  if (spot.kind !== 'event') return true;
+  const start = (spot.starts_at || '').slice(0, 10);
+  const end = (spot.ends_at || spot.starts_at || '').slice(0, 10);
+  if (!start) return false;
+  return (!to || start <= to) && (!from || end >= from);
+}
+
+/**
+ * Rank spots for one city and date window.
+ *
+ * @param {object} ctx
+ * @param {Map}    ctx.profile      from tasteProfile()
+ * @param {Array}  ctx.saves        the user's saves, used to explain picks
+ * @param {Array}  ctx.spots        candidate spots { id, kind, title, city, tags, starts_at, ends_at, opened_at, popularity }
+ * @param {string} [ctx.city]       null = anywhere
+ * @param {string} [ctx.from]       YYYY-MM-DD
+ * @param {string} [ctx.to]         YYYY-MM-DD
+ * @param {Map}    [ctx.friendSaves] spot_id → [friend name]
+ * @param {Set}    [ctx.exclude]    spot ids already saved or dismissed
+ * @param {string} [ctx.today]      YYYY-MM-DD, for "just opened"
+ */
+export function rankSpots({ profile, saves = [], spots, city, from, to, friendSaves = new Map(), exclude = new Set(), today = new Date().toISOString().slice(0, 10) }) {
+  const byTag = new Map();
+  for (const s of saves) for (const t of s.tags || []) {
+    if (!byTag.has(t)) byTag.set(t, []);
+    byTag.get(t).push(s);
+  }
+  const out = [];
+  for (const spot of spots) {
+    if (exclude.has(spot.id)) continue;
+    // Products with no city are online and ship anywhere.
+    if (city && spot.city && spot.city.toLowerCase() !== city.toLowerCase()) continue;
+    if (city && !spot.city && spot.kind !== 'product') continue;
+    if (!inWindow(spot, from, to)) continue;
+
+    const f = new Map(spot.tags.map((t) => [t, 1]));
+    for (const c of spot.creators || []) f.set(`creator:${c.toLowerCase()}`, 1.5);
+    const content = cosine(profile, f);
+    const friends = friendSaves.get(spot.id) || [];
+    if (content <= 0 && !friends.length) continue;
+
+    const social = Math.tanh(0.6 * friends.length);
+    const age = spot.opened_at ? daysBetween(spot.opened_at, today) : null;
+    const fresh = age != null && age >= -30 && age <= FRESH_DAYS ? 1 : 0;
+    const gem = 1 - (spot.popularity ?? 0.5);
+    const score = SPOT_BLEND.content * content + SPOT_BLEND.social * social + SPOT_BLEND.fresh * fresh + SPOT_BLEND.gem * gem;
+
+    out.push({
+      spot,
+      score: +score.toFixed(4),
+      match: toPercent(content),
+      reasons: explainSpot({ spot, f, profile, byTag, friends, fresh, age, gem }),
+    });
+  }
+  return out.sort((a, b) => b.score - a.score);
+}
+
+function daysBetween(a, b) {
+  return Math.round((Date.parse(b) - Date.parse(a.slice(0, 10))) / 864e5);
+}
+
+const SOURCE_LABEL = { spotify: 'Spotify', instagram: 'Instagram', google_maps: 'Google Maps', pinterest: 'Pinterest', manual: 'your notes', tastemate: 'Tastemate' };
+
+/**
+ * Reasons in the user's own terms: which of their saves, from which apps,
+ * point at this spot ("6 jazz saves on Spotify, 2 on Google Maps").
+ */
+function explainSpot({ spot, f, profile, byTag, friends, fresh, age, gem }) {
+  const reasons = [];
+  const shared = [...f.keys()]
+    .filter((k) => (profile.get(k) || 0) > 0)
+    .sort((a, b) => profile.get(b) - profile.get(a));
+  const creator = shared.find((k) => k.startsWith('creator:'));
+  if (creator) {
+    const name = spot.creators.find((c) => `creator:${c.toLowerCase()}` === creator);
+    reasons.push({ type: 'creator', name });
+  }
+  const tags = shared.filter((k) => !k.startsWith('creator:')).slice(0, 3);
+  const evidence = tags
+    .map((tag) => {
+      const list = byTag.get(tag) || [];
+      const bySource = countBy(list, (s) => s.source);
+      return {
+        tag,
+        n: list.length,
+        sources: Object.entries(bySource).sort((a, b) => b[1] - a[1]).map(([source, n]) => ({ source, label: SOURCE_LABEL[source] || source, n })),
+        examples: list.slice(0, 2).map((s) => s.title),
+      };
+    })
+    .filter((e) => e.n > 0);
+  if (evidence.length) reasons.push({ type: 'saves', evidence });
+  else if (tags.length) reasons.push({ type: 'tags', tags });
+  if (friends.length) reasons.push({ type: 'friends', names: friends.slice(0, 3), n: friends.length });
+  if (fresh) reasons.push({ type: 'new', days: age });
+  if (gem >= 1 - GEM_POPULARITY) reasons.push({ type: 'gem' });
+  return reasons;
+}

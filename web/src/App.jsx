@@ -19,6 +19,8 @@ import UserPage from './pages/UserPage.jsx';
 import Feed from './pages/Feed.jsx';
 import Taste from './pages/Taste.jsx';
 import Me from './pages/Me.jsx';
+import Saves from './pages/Saves.jsx';
+import Next from './pages/Next.jsx';
 
 const AuthCtx = createContext(null);
 export const useAuth = () => useContext(AuthCtx);
@@ -26,19 +28,19 @@ export const useAuth = () => useContext(AuthCtx);
 // Desktop top navigation.
 const NAV = [
   ['/', 'For You'],
+  ['/next', 'Next'],
+  ['/saves', 'Saves'],
   ['/discover', 'Browse'],
   ['/radar', 'Radar'],
   ['/feed', 'Feed'],
   ['/lists', 'Lists'],
-  ['/library', 'Library'],
-  ['/friends', 'Friends'],
 ];
 
 // Phone bottom tabs: the five things people do most. Everything else lives under "Me".
 const TABS = [
   ['/', 'For You', 'home'],
-  ['/discover', 'Browse', 'compass'],
-  ['/radar', 'Radar', 'radar'],
+  ['/next', 'Next', 'pin'],
+  ['/saves', 'Saves', 'graph'],
   ['/feed', 'Feed', 'activity'],
   ['/me', 'Me', 'user'],
 ];
@@ -113,6 +115,8 @@ export default function App() {
             <Route path="/welcome" element={<Onboarding />} />
             <Route path="/discover" element={<Discover />} />
             <Route path="/radar" element={<Radar />} />
+            <Route path="/next" element={<Next />} />
+            <Route path="/saves" element={<Saves />} />
             <Route path="/search" element={<Search />} />
             <Route path="/item/:id" element={<ItemPage />} />
             <Route path="/library" element={<Library />} />

@@ -2,9 +2,11 @@
 //   npm run seed            → catalogue only (skipped if items already exist)
 //   npm run seed -- --demo  → also adds demo friends (maya, sam, jo) and a `demo` account
 import { fileURLToPath } from 'node:url';
-import { openDb, tx, upsertItem } from '../db.js';
+import { openDb, tx, upsertItem, upsertSpot } from '../db.js';
+import { autoTag, cleanTags } from '../taxonomy.js';
 import { hashPassword } from '../auth.js';
 import { BOOKS, DEMO_UPCOMING, MOVIES, MUSIC, TV } from './catalog.js';
+import { DEMO_SAVES, FRIEND_SPOT_SAVES, demoSpots } from './spots.js';
 
 export function seedCatalog(db) {
   let n = 0;
@@ -31,7 +33,14 @@ export function seedCatalog(db) {
       n++;
     });
   });
-  return n;
+  return n + seedSpots(db);
+}
+
+/** Sample events, places and products for the taste graph's Next page. */
+export function seedSpots(db) {
+  const rows = demoSpots();
+  tx(db, () => rows.forEach((s) => upsertSpot(db, s)));
+  return rows.length;
 }
 
 // Demo personas: tags they love and hate. Scores come from tag overlap plus
@@ -93,6 +102,22 @@ export function seedDemo(db, { password = 'demo1234' } = {}) {
         if (it) db.prepare('INSERT INTO list_items (list_id, item_id, note, position) VALUES (?,?,?,?)').run(listId, it.id, note || null, pos);
       });
     };
+    // Taste graph: the demo account's saves from other apps, and spots friends saved.
+    const addSave = db.prepare(
+      `INSERT OR IGNORE INTO saves (user_id, kind, title, creator, source, collection, city, tags, spot_id, external_key)
+       VALUES (?,?,?,?,?,?,?,?,?,?)`
+    );
+    for (const [source, kind, title, creator, collection, city] of DEMO_SAVES) {
+      addSave.run(ids.demo, kind, title, creator, source, collection, city ?? null, JSON.stringify(cleanTags(autoTag(title, collection))), null, `${source}|${title}`);
+    }
+    for (const [u, titles] of Object.entries(FRIEND_SPOT_SAVES)) {
+      for (const t of titles) {
+        const spot = db.prepare('SELECT * FROM spots WHERE title = ?').get(t);
+        if (spot) addSave.run(ids[u], spot.kind === 'product' ? 'product' : spot.kind, spot.title, null, 'tastemate', null, spot.city, spot.tags, spot.id, `spot:${spot.id}`);
+      }
+    }
+    db.prepare(`INSERT OR IGNORE INTO user_settings (user_id, home_city) VALUES (?, 'Dublin')`).run(ids.demo);
+
     mkList('maya', 'Rainy Sunday, lights off', 'Dark, slow and beautiful, across every medium.', [
       ['Twin Peaks', 'Start here.'], ['Pink Moon'], ['The Secret History', 'Read it in one weekend.'], ['Untrue'], ['Hereditary', 'Not for the faint-hearted.'],
     ]);
@@ -105,6 +130,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const db = openDb();
   if (!db.prepare('SELECT 1 FROM items LIMIT 1').get()) console.log(`Seeded ${seedCatalog(db)} catalogue items`);
   else console.log('Catalogue already present');
+  if (!db.prepare('SELECT 1 FROM spots LIMIT 1').get()) console.log(`Seeded ${seedSpots(db)} sample spots`);
   if (process.argv.includes('--demo')) {
     seedDemo(db);
     console.log('Demo users added: maya, sam, jo, demo (password: demo1234)');
