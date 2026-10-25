@@ -678,3 +678,13 @@ main { max-width: 1240px; margin: 0 auto; padding: 28px 24px 64px; }
   .shelf-section .grid:has(.spot-card) { grid-template-columns: 1fr; }
 }
 .chip.on .muted { color: inherit; opacity: 0.7; }
+.tier-bar { display: flex; gap: 3px; margin: 12px 0 6px; border-radius: 999px; overflow: hidden; font-size: 0.72rem; font-weight: 600; }
+.tier { padding: 4px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.tier-obvious { background: var(--accent); color: var(--accent-ink); }
+.tier-translated { background: color-mix(in srgb, var(--accent) 45%, var(--surface-2)); color: var(--ink); }
+.tier-possible { background: var(--surface-2); color: var(--ink-2); border: 1px dashed var(--line-strong); }
+.tier-list { margin-top: 10px; }
+.tier-list ul { list-style: none; padding: 0; margin: 6px 0 0; display: grid; gap: 4px; font-size: 0.85rem; }
+.tier-label { display: inline-block; font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 999px; }
+.link-btn { background: none; border: 0; padding: 0; min-height: 0; color: var(--ink-2); font-weight: 600; font-size: 0.85rem; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+.link-btn:hover { color: var(--ink); background: none; }

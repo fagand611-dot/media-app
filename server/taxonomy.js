@@ -235,6 +235,80 @@ export const VIBE_KEYWORDS = {
   cosy: ['cozy'],
   'hidden gem': ['hidden gem'],
   secret: ['hidden gem', 'intimate'],
+  'blue note': ['jazz', 'vinyl'],
+  kissa: ['jazz', 'vinyl', 'coffee', 'intimate'],
+  coltrane: ['jazz'],
+  saxophone: ['jazz'],
+  trumpet: ['jazz'],
+  'piano trio': ['jazz', 'intimate'],
+  'upright bass': ['jazz'],
+  smoky: ['moody', 'jazz'],
+  records: ['vinyl'],
+  turntable: ['vinyl'],
+  'hi-fi': ['vinyl', 'jazz'],
+  candlelight: ['moody', 'intimate', 'romantic'],
+  concrete: ['architecture', 'minimal'],
+  lamination: ['pastry'],
+  laminated: ['pastry'],
+  sourdough: ['food', 'pastry'],
+  tea: ['cozy'],
+  'string quartet': ['classical', 'intimate'],
+  orchestra: ['classical', 'epic'],
+};
+
+// Artists whose genre isn't in their song titles. The catalogue fills in
+// more at import time; this covers well-known names it may not have.
+export const KNOWN_CREATORS = {
+  'miles davis': ['jazz'],
+  'john coltrane': ['jazz'],
+  'bill evans': ['jazz'],
+  'duke ellington': ['jazz'],
+  'thelonious monk': ['jazz'],
+  'chet baker': ['jazz', 'romantic'],
+  'dave brubeck': ['jazz'],
+  'the dave brubeck quartet': ['jazz'],
+  'nina simone': ['jazz', 'soul'],
+  'herbie hancock': ['jazz'],
+  'kamasi washington': ['jazz', 'epic'],
+  'norah jones': ['jazz', 'chill'],
+  'nick drake': ['folk'],
+  'massive attack': ['electronic', 'moody', 'dark'],
+  portishead: ['electronic', 'moody', 'dark'],
+  'daft punk': ['house'],
+  'rhythim is rhythim': ['techno'],
+  'frankie knuckles': ['house'],
+  'max richter': ['classical', 'atmospheric'],
+};
+
+// Indirect links between tags: things that often go with a taste without
+// naming it. A vinyl habit could be jazz; a speakeasy could be too. These
+// are "could be" signals, weighted well below what a save says outright.
+export const ASSOCIATIONS = {
+  vinyl: [['jazz', 0.5], ['soul', 0.4], ['vintage', 0.3]],
+  speakeasy: [['jazz', 0.4], ['cocktails', 0.6]],
+  cocktails: [['jazz', 0.25]],
+  'wine bar': [['jazz', 0.2], ['food', 0.3]],
+  moody: [['jazz', 0.2], ['classical', 0.2]],
+  intimate: [['jazz', 0.25], ['folk', 0.2]],
+  'dark academia': [['books', 0.5], ['classical', 0.35], ['jazz', 0.2]],
+  books: [['coffee', 0.3], ['cozy', 0.3]],
+  coffee: [['pastry', 0.35]],
+  pastry: [['coffee', 0.4]],
+  vintage: [['vinyl', 0.3], ['jazz', 0.15]],
+  tailoring: [['classic', 0.4], ['dark academia', 0.2]],
+  minimal: [['design', 0.3], ['craft', 0.2]],
+  architecture: [['design', 0.4], ['art', 0.3]],
+  art: [['gallery', 0.4]],
+  craft: [['art', 0.3], ['minimal', 0.3]],
+  cozy: [['books', 0.2], ['coffee', 0.25]],
+  techno: [['lively', 0.4]],
+  house: [['lively', 0.4], ['rooftop', 0.25]],
+  chill: [['jazz', 0.15], ['ambient', 0.2]],
+  cerebral: [['books', 0.2], ['gallery', 0.2]],
+  romantic: [['wine bar', 0.3]],
+  soul: [['vinyl', 0.3], ['jazz', 0.3]],
+  folk: [['intimate', 0.3], ['live music', 0.2]],
+  'live music': [['jazz', 0.2]],
 };
 
 // Kinds a save is filed under, guessed from its tags when the source can't say.
@@ -247,22 +321,62 @@ const KIND_HINTS = [
 
 const KEYWORD_RES = Object.entries(VIBE_KEYWORDS)
   .sort((a, b) => b[0].length - a[0].length)
-  .map(([k, tags]) => [new RegExp(`(^|[^a-z])${k.replace(/[-]/g, '[- ]?')}(s|es)?([^a-z]|$)`, 'i'), tags]);
+  .map(([k, tags]) => [new RegExp(`(^|[^a-z])${k.replace(/[-]/g, '[- ]?')}(s|es)?([^a-z]|$)`, 'i'), k, tags]);
+// Single words long enough to spot inside a run-together handle.
+const HANDLE_WORDS = Object.entries(VIBE_KEYWORDS)
+  .filter(([k]) => k.length >= 5 && /^[a-z -]+$/.test(k))
+  .map(([k, tags]) => [k.replace(/[ -]/g, ''), tags]);
 
-/** Tags implied by free text (title, note, collection name…). */
-export function autoTag(...texts) {
-  const s = texts.filter(Boolean).join(' · ');
-  const out = new Set();
+/**
+ * Read a save's text and say what it signals, and how directly:
+ *   obvious     the tag's own word is there ("jazz", or a music genre)
+ *   translated  something that means it ("listening bar", "Miles Davis",
+ *               "@croissantdiaries" → pastry)
+ * Returns [{ tag, tier, via }], strongest tier per tag. "Could be" signals
+ * come later, from associations and the user's own patterns (taste-graph.js).
+ */
+export function readSignals({ title, creator, collection, note } = {}) {
+  const s = [title, creator, collection, note].filter(Boolean).join(' · ');
+  const out = new Map();
+  const put = (tag, tier, via) => {
+    const prev = out.get(tag);
+    if (!prev || (prev.tier === 'translated' && tier === 'obvious')) out.set(tag, { tag, tier, via });
+  };
   if (!s) return [];
-  for (const [re, tags] of KEYWORD_RES) if (re.test(s)) tags.forEach((t) => out.add(t));
-  // Music genres from the media vocabulary carry their moods across.
-  for (const g of normalizeGenres(s.split(/[·,/|]/))) {
-    if (GENRES.music.includes(g)) {
-      out.add(g);
-      moodsForGenres([g]).forEach((m) => out.add(m));
+  for (const [re, k, tags] of KEYWORD_RES) {
+    if (!re.test(s)) continue;
+    for (const t of tags) put(t, t === k ? 'obvious' : 'translated', k);
+  }
+  // Handles run words together ("croissantdiaries", "concrete.daily"). Only
+  // look inside things that are handles, so "candlelit" isn't read as "candle".
+  const handles = (s.toLowerCase().match(/@[a-z0-9._]{3,}|[a-z0-9]+[._][a-z0-9._]+/g) || []).map((h) => h.replace(/^@/, ''));
+  if (creator && !/\s/.test(creator)) handles.push(creator.toLowerCase());
+  for (const token of new Set(handles)) {
+    for (const [k, tags] of HANDLE_WORDS) {
+      if (token.includes(k)) for (const t of tags) put(t, 'translated', `“${token}” contains “${k}”`);
     }
   }
-  return [...out];
+  // Genres only from short phrases ("Pink Moon · folk"), never mid-sentence,
+  // so "pop-up" or "the house special" don't count as music.
+  const phrases = s.toLowerCase().split(/[·,/|\n]/).map((x) => x.trim()).filter((x) => x && x.split(/\s+/).length <= 3);
+  for (const g of normalizeGenres(phrases)) {
+    if (!GENRES.music.includes(g) || !phrases.some((x) => new RegExp(`(^|[^a-z-])${g}([^a-z-]|$)`).test(x) || x === g)) continue;
+    put(g, 'obvious', g);
+    for (const m of moodsForGenres([g])) put(m, 'translated', `${g} is ${m}`);
+  }
+  // "Duke Ellington & John Coltrane" counts for both.
+  for (const name of creator ? creator.split(/\s*(?:&|,| and | feat\.? )\s*/i) : []) {
+    for (const t of KNOWN_CREATORS[name.toLowerCase()] || []) {
+      put(t, 'translated', `${name} → ${t}`);
+      for (const m of moodsForGenres([t])) put(m, 'translated', `${t} is ${m}`);
+    }
+  }
+  return [...out.values()];
+}
+
+/** Tags implied by free text (title, note, collection name…). */
+export function autoTag(title, creator, collection, note) {
+  return readSignals({ title, creator, collection, note }).map((x) => x.tag);
 }
 
 /** Best-guess kind for a save from its tags, or `fallback`. */

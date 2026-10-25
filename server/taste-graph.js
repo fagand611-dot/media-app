@@ -1,25 +1,82 @@
-// The taste graph: saves from every app become one tag profile, recurring
-// combinations of tags become visible "patterns", and the profile ranks
-// real-world spots (events, places, products) for a city and a date range.
+// The taste graph: saves from every app are read for what they signal
+// (obviously, by translation, or possibly), those signals form one tag
+// profile and a few cohesive clusters, and the profile ranks real-world
+// spots (events, places, products) for a city and a date range.
 //
 // Pure functions, like recommender.js: routes load rows, this scores them.
 // See DESIGN.md §9.
 import { cosine, toPercent } from './recommender.js';
+import { ASSOCIATIONS, readSignals } from './taxonomy.js';
 
 export const SPOT_BLEND = { content: 0.6, social: 0.2, fresh: 0.1, gem: 0.1 };
 // How much your film/TV/music/book profile counts next to your saves.
 export const MEDIA_WEIGHT = 0.5;
+// How much each kind of signal counts.
+export const TIER_CONF = { obvious: 1, translated: 0.7 };
+const ASSOC_CONF = 0.4; // × association strength
+const LEARNED_CONF = 0.35; // × how often the tags go together in your saves
+const MIN_POSSIBLE = 0.1;
 // Spots this new (days since opening) get the "just opened" boost.
 const FRESH_DAYS = 60;
 // Below this popularity a spot counts as a hidden gem.
 const GEM_POPULARITY = 0.35;
 
-/** A save's feature tags: its own tags plus its creator (artist, account, brand). */
-export function saveTags(save) {
-  const tags = [...(save.tags || [])];
-  if (save.creator) tags.push(`creator:${save.creator.toLowerCase()}`);
-  return tags;
+/**
+ * Read every save as a whole and attach `signals`: [{ tag, tier, conf, via }].
+ *
+ *   obvious     says it outright ("jazz", or a tag you added yourself)
+ *   translated  means it without saying it ("listening bar", "Miles Davis",
+ *               "@croissantdiaries")
+ *   possible    could be: a known association (vinyl → maybe jazz) or your
+ *               own habit (most of your speakeasy saves are also jazz)
+ *
+ * Possible signals only count for a fraction, so they shape a cluster
+ * without inventing one.
+ */
+export function interpret(saves) {
+  const base = saves.map((s) => {
+    const read = new Map(readSignals(s).map((x) => [x.tag, x]));
+    return (s.tags || []).map((tag) => {
+      const r = read.get(tag);
+      // Tags the text doesn't explain came from you or a curated spot: take them at face value.
+      const tier = r?.tier === 'translated' && s.source !== 'tastemate' ? 'translated' : 'obvious';
+      return { tag, tier, conf: TIER_CONF[tier], via: r && r.via !== tag ? r.via : null };
+    });
+  });
+
+  // Your own habits: P(B | A) over your saves, for tags you use often.
+  const count = new Map();
+  const co = new Map();
+  for (const sig of base) {
+    const tags = sig.map((x) => x.tag);
+    for (const a of tags) {
+      count.set(a, (count.get(a) || 0) + 1);
+      for (const b of tags) if (a !== b) co.set(`${a}|${b}`, (co.get(`${a}|${b}`) || 0) + 1);
+    }
+  }
+  const learned = new Map(); // a → [[b, p]]
+  for (const [key, n] of co) {
+    const [a, b] = key.split('|');
+    const p = n / count.get(a);
+    if (count.get(a) >= 3 && p >= 0.5) learned.set(a, [...(learned.get(a) || []), [b, p]]);
+  }
+
+  return saves.map((s, i) => {
+    const have = new Set(base[i].map((x) => x.tag));
+    const maybe = new Map();
+    const offer = (tag, conf, via) => {
+      if (have.has(tag) || conf < MIN_POSSIBLE) return;
+      if (!maybe.has(tag) || maybe.get(tag).conf < conf) maybe.set(tag, { tag, tier: 'possible', conf: +conf.toFixed(3), via });
+    };
+    for (const { tag } of base[i]) {
+      for (const [t, w] of ASSOCIATIONS[tag] || []) offer(t, ASSOC_CONF * w, `${tag} often goes with ${t}`);
+      for (const [t, p] of learned.get(tag) || []) offer(t, LEARNED_CONF * p, `most of your ${tag} saves are also ${t}`);
+    }
+    return { ...s, signals: [...base[i], ...maybe.values()] };
+  });
 }
+
+const ensure = (saves) => (saves.length && !saves[0].signals ? interpret(saves) : saves);
 
 /**
  * One profile from saves, optionally blended with the media profile from
@@ -29,11 +86,13 @@ export function saveTags(save) {
 export function tasteProfile(saves, mediaProfile = new Map()) {
   const p = new Map();
   const add = (k, w) => p.set(k, (p.get(k) || 0) + w);
-  for (const s of saves) {
-    const tags = saveTags(s);
-    if (!tags.length) continue;
-    const w = 1 / Math.sqrt(tags.length);
-    for (const t of tags) add(t, w);
+  for (const s of ensure(saves)) {
+    const firm = s.signals.filter((x) => x.tier !== 'possible').length + (s.creator ? 1 : 0);
+    if (!firm) continue;
+    // Normalise by how much the save says outright, so heavily tagged saves don't dominate.
+    const n = Math.sqrt(firm);
+    for (const x of s.signals) add(x.tag, x.conf / n);
+    if (s.creator) add(`creator:${s.creator.toLowerCase()}`, 1 / n);
   }
   let max = 0;
   for (const [k, v] of mediaProfile) if (/^(mood|genre):/.test(k)) max = Math.max(max, v);
@@ -55,23 +114,25 @@ export function topSaveTags(profile, n = 24) {
 }
 
 /**
- * Recurring combinations of tags across your saves, e.g. "moody · jazz ·
- * intimate" showing up in songs, places and looks. Greedy: take the
- * strongest tag not yet in a pattern as the seed, describe it with the two
- * tags it co-occurs with most, and keep it if the saves carrying the seed
- * span more than one kind of thing or more than one app.
+ * Cohesive clusters of taste, e.g. "jazz · intimate · vinyl", built from
+ * everything that points at the seed tag: songs that say jazz, a listening
+ * bar that means jazz, a speakeasy that could be jazz. Greedy: the
+ * strongest tag not yet in a cluster seeds one, the two tags it goes with
+ * most describe it, and it's kept if at least two saves firmly support it
+ * and they span more than one kind of thing or more than one app.
  */
 export function findPatterns(saves, { max = 5, minSaves = 3 } = {}) {
+  const all = ensure(saves).filter((s) => s.signals.length);
   const weight = new Map();
   const co = new Map();
-  const tagged = saves.map((s) => ({ s, tags: [...new Set(s.tags || [])] })).filter((x) => x.tags.length);
-  for (const { tags } of tagged) {
-    for (const a of tags) {
-      weight.set(a, (weight.get(a) || 0) + 1);
-      for (const b of tags) {
-        if (a === b) continue;
-        if (!co.has(a)) co.set(a, new Map());
-        co.get(a).set(b, (co.get(a).get(b) || 0) + 1);
+  for (const s of all) {
+    for (const a of s.signals) {
+      weight.set(a.tag, (weight.get(a.tag) || 0) + a.conf);
+      if (a.tier === 'possible') continue;
+      for (const b of s.signals) {
+        if (a.tag === b.tag || b.tier === 'possible') continue;
+        if (!co.has(a.tag)) co.set(a.tag, new Map());
+        co.get(a.tag).set(b.tag, (co.get(a.tag).get(b.tag) || 0) + 1);
       }
     }
   }
@@ -85,20 +146,28 @@ export function findPatterns(saves, { max = 5, minSaves = 3 } = {}) {
       .sort((a, b) => b[1] - a[1])
       .slice(0, 2)
       .map(([t]) => t);
-    const tags = [seed, ...partners];
-    const support = tagged.filter(({ tags: ts }) => ts.includes(seed));
-    if (support.length < minSaves) continue;
-    const kinds = countBy(support, (x) => x.s.kind);
-    const sources = countBy(support, (x) => x.s.source);
-    // A pattern is only interesting if it crosses kinds or apps.
+    const tiers = { obvious: [], translated: [], possible: [] };
+    for (const s of all) {
+      const sig = s.signals.find((x) => x.tag === seed);
+      if (sig) tiers[sig.tier].push({ id: s.id, title: s.title, kind: s.kind, source: s.source, via: sig.via });
+    }
+    const firm = [...tiers.obvious, ...tiers.translated];
+    if (firm.length < 2 || firm.length + tiers.possible.length < minSaves) continue;
+    const support = [...firm, ...tiers.possible];
+    const kinds = countBy(support, (x) => x.kind);
+    const sources = countBy(support, (x) => x.source);
+    // A cluster is only interesting if it crosses kinds or apps.
     if (Object.keys(kinds).length < 2 && Object.keys(sources).length < 2) continue;
+    const tags = [seed, ...partners];
     tags.forEach((t) => used.add(t));
     out.push({
       tags,
-      count: support.length,
+      count: firm.length,
+      maybe: tiers.possible.length,
       kinds,
       sources,
-      examples: support.slice(0, 4).map(({ s }) => ({ id: s.id, title: s.title, kind: s.kind, source: s.source })),
+      tiers,
+      examples: support.slice(0, 4),
     });
   }
   return out;
@@ -135,9 +204,11 @@ export function inWindow(spot, from, to) {
  */
 export function rankSpots({ profile, saves = [], spots, city, from, to, friendSaves = new Map(), exclude = new Set(), today = new Date().toISOString().slice(0, 10) }) {
   const byTag = new Map();
-  for (const s of saves) for (const t of s.tags || []) {
-    if (!byTag.has(t)) byTag.set(t, []);
-    byTag.get(t).push(s);
+  const maybeByTag = new Map();
+  for (const s of ensure(saves)) for (const x of s.signals) {
+    const m = x.tier === 'possible' ? maybeByTag : byTag;
+    if (!m.has(x.tag)) m.set(x.tag, []);
+    m.get(x.tag).push(s);
   }
   const out = [];
   for (const spot of spots) {
@@ -163,7 +234,7 @@ export function rankSpots({ profile, saves = [], spots, city, from, to, friendSa
       spot,
       score: +score.toFixed(4),
       match: toPercent(content),
-      reasons: explainSpot({ spot, f, profile, byTag, friends, fresh, age, gem }),
+      reasons: explainSpot({ spot, f, profile, byTag, maybeByTag, friends, fresh, age, gem }),
     });
   }
   return out.sort((a, b) => b.score - a.score);
@@ -179,7 +250,7 @@ const SOURCE_LABEL = { spotify: 'Spotify', instagram: 'Instagram', google_maps: 
  * Reasons in the user's own terms: which of their saves, from which apps,
  * point at this spot ("6 jazz saves on Spotify, 2 on Google Maps").
  */
-function explainSpot({ spot, f, profile, byTag, friends, fresh, age, gem }) {
+function explainSpot({ spot, f, profile, byTag, maybeByTag, friends, fresh, age, gem }) {
   const reasons = [];
   const shared = [...f.keys()]
     .filter((k) => (profile.get(k) || 0) > 0)
@@ -199,6 +270,7 @@ function explainSpot({ spot, f, profile, byTag, friends, fresh, age, gem }) {
         n: list.length,
         sources: Object.entries(bySource).sort((a, b) => b[1] - a[1]).map(([source, n]) => ({ source, label: SOURCE_LABEL[source] || source, n })),
         examples: list.slice(0, 2).map((s) => s.title),
+        maybe: (maybeByTag.get(tag) || []).length,
       };
     })
     .filter((e) => e.n > 0);

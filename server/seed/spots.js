@@ -45,6 +45,11 @@ export const PRODUCTS = [
   ['Stoneware pour-over set', null, 'Ships worldwide', ['coffee', 'craft', 'minimal'], '$58', 0.25, 'Made by a small studio; ships to Ireland, UK, Thailand.'],
   ['Blue Note reissue on 180g vinyl', null, 'Ships worldwide', ['jazz', 'vinyl'], '$34', 0.45, 'The Tone Poet series, mastered from the original tapes.'],
   ['Long wool trench in camel', null, 'Ships to Ireland and UK', ['tailoring', 'outerwear', 'classic', 'minimal'], '€190', 0.55, 'Free returns within 30 days.'],
+  ['Natural and skin-contact wine, by the bottle', 'Dublin', 'A small wine shop, Drury Street', ['wine bar', 'intimate', 'craft', 'moody'], '€18–35', 0.3, 'Ask for something orange and textured.'],
+  ['Pastry box to pre-order', 'Dublin', 'Neighbourhood bakery, Stoneybatter', ['pastry', 'coffee'], '€22', 0.25, 'Order by 8pm for the next morning.'],
+  ['Old-world reds: Nebbiolo, Rhône Syrah', 'London', 'Wine merchant, Clerkenwell', ['wine bar', 'moody', 'dark', 'food'], '£20–60', 0.35, 'Staff will match a bottle to your menu.'],
+  ['Natural wine shop and bar', 'Bangkok', 'Ari', ['wine bar', 'chill', 'intimate'], '฿900+', 0.3, 'Takeaway bottles and a fridge of pét-nat.'],
+  ['Beeswax dinner candles, set of 6', null, 'Ships worldwide', ['moody', 'intimate', 'cozy', 'romantic'], '$24', 0.3, 'Slow-burning, smoke-free.'],
 ];
 
 /** Spot rows with dates relative to `now`. */
@@ -65,13 +70,13 @@ export function demoSpots(now = new Date()) {
 
 // Saves for the demo account, across four apps: [source, kind, title, creator, collection, city]
 export const DEMO_SAVES = [
-  ['spotify', 'song', 'So What', 'Miles Davis', 'Kind of Blue · jazz'],
-  ['spotify', 'song', 'In a Sentimental Mood', 'Duke Ellington & John Coltrane', 'late night jazz'],
-  ['spotify', 'song', 'Blue in Green', 'Bill Evans', 'jazz'],
-  ['spotify', 'song', 'Take Five', 'The Dave Brubeck Quartet', 'jazz'],
-  ['spotify', 'song', 'Pink Moon', 'Nick Drake', 'folk'],
-  ['spotify', 'song', 'Teardrop', 'Massive Attack', 'moody · electronic'],
-  ['spotify', 'song', 'Strings of Life', 'Rhythim Is Rhythim', 'house'],
+  ['spotify', 'song', 'So What', 'Miles Davis', 'Kind of Blue'],
+  ['spotify', 'song', 'In a Sentimental Mood', 'Duke Ellington & John Coltrane', 'Ellington & Coltrane'],
+  ['spotify', 'song', 'Blue in Green', 'Miles Davis & Bill Evans', 'Kind of Blue'],
+  ['spotify', 'song', 'Take Five', 'The Dave Brubeck Quartet', 'Time Out'],
+  ['spotify', 'song', 'Pink Moon', 'Nick Drake', 'Pink Moon · folk'],
+  ['spotify', 'song', 'Teardrop', 'Massive Attack', 'Mezzanine'],
+  ['spotify', 'song', 'Strings of Life', 'Rhythim Is Rhythim', 'Strings of Life'],
   ['instagram', 'look', '@thecharcoalcoat', 'thecharcoalcoat', 'Coats'],
   ['instagram', 'look', '@oldlibraryfits', 'oldlibraryfits', 'Dark academia'],
   ['instagram', 'look', '@tweedandtea', 'tweedandtea', 'Dark academia'],
@@ -81,6 +86,8 @@ export const DEMO_SAVES = [
   ['instagram', 'art', '@concrete.daily', 'concrete.daily', 'Brutalist architecture'],
   ['google_maps', 'place', 'Candlelit wine bar near the canal', null, 'Want to go', 'Dublin'],
   ['google_maps', 'place', 'Vinyl listening bar', null, 'Loved', 'Tokyo'],
+  ['google_maps', 'place', 'Speakeasy with a hi-fi', null, 'Want to go', 'London'],
+  ['instagram', 'other', '@bluenote.records', 'bluenote.records', 'Music'],
   ['google_maps', 'place', 'Jazz café with a record wall', null, 'Bangkok trip', 'Bangkok'],
   ['google_maps', 'place', 'Specialty coffee, Ari', null, 'Bangkok trip', 'Bangkok'],
   ['google_maps', 'place', 'Bookshop café', null, 'Loved', 'London'],

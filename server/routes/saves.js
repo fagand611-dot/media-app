@@ -1,19 +1,27 @@
-import { HttpError, intParam } from '../http.js';
+import { HttpError, ah, intParam } from '../http.js';
 import { requireUser } from '../auth.js';
-import { hydrateItem, hydrateSave, hydrateSpot, tx } from '../db.js';
+import { hydrateItem, hydrateSave, hydrateSpot, tx, upsertSpot } from '../db.js';
 import { parseImport } from '../importers.js';
 import { SAVE_KINDS, SAVE_SOURCES, autoTag, cleanTags, guessKind } from '../taxonomy.js';
-import { findPatterns, rankSpots, tasteProfile, topSaveTags } from '../taste-graph.js';
+import { findPatterns, interpret, rankSpots, tasteProfile, topSaveTags } from '../taste-graph.js';
+import { parsePost } from '../posts.js';
+import { OCCASIONS, planOccasion } from '../occasions.js';
 import { friendIds, getProfile } from '../services.js';
 
 const IMPORT_SOURCES = ['spotify', 'instagram', 'google_maps', 'pinterest'];
 const PER_KIND = { event: 12, place: 12, product: 8 };
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-export default function savesRoutes(r, { db }) {
+export default function savesRoutes(r, { db, venueFeed }) {
   const getSaves = (userId) => db.prepare('SELECT * FROM saves WHERE user_id = ? ORDER BY COALESCE(saved_at, created_at) DESC, id DESC').all(userId).map(hydrateSave);
   const cities = () => db.prepare('SELECT DISTINCT city FROM spots WHERE city IS NOT NULL ORDER BY city').all().map((x) => x.city);
   const homeCity = (userId) => db.prepare('SELECT home_city FROM user_settings WHERE user_id = ?').get(userId)?.home_city ?? null;
+  // Curated and feed spots are public; spots someone added from a post are
+  // shown to them and their friends.
+  const visibleSpots = (userId) => {
+    const ids = [userId, ...friendIds(db, userId)];
+    return db.prepare(`SELECT * FROM spots WHERE added_by IS NULL OR added_by IN (${ids.map(() => '?').join(',')})`).all(...ids).map(hydrateSpot);
+  };
   const ownSave = (req) => {
     const s = db.prepare('SELECT * FROM saves WHERE id = ? AND user_id = ?').get(intParam(req.params.id), req.user.id);
     if (!s) throw new HttpError(404, 'Save not found');
@@ -89,11 +97,12 @@ export default function savesRoutes(r, { db }) {
 
   // ----- The graph: tag weights and cross-app patterns -----
   r.get('/graph', requireUser, (req, res) => {
-    const saves = getSaves(req.user.id);
+    const saves = interpret(getSaves(req.user.id));
     const profile = tasteProfile(saves, getProfile(db, req.user.id));
     const savedCities = {};
     for (const s of saves) if (s.city) savedCities[s.city] = (savedCities[s.city] || 0) + 1;
-    res.json({ tags: topSaveTags(profile), patterns: findPatterns(saves), total: saves.length, untagged: saves.filter((s) => !s.tags.length).length, cities: savedCities });
+    const possible = saves.reduce((n, s) => n + s.signals.filter((x) => x.tier === 'possible').length, 0);
+    res.json({ tags: topSaveTags(profile), patterns: findPatterns(saves), total: saves.length, untagged: saves.filter((s) => !s.tags.length).length, possible, cities: savedCities });
   });
 
   // ----- Next: what to do, see and buy in a city, for a date range -----
@@ -107,9 +116,9 @@ export default function savesRoutes(r, { db }) {
     const to = ISO_DATE.test(req.query.to) ? req.query.to : addDays(from, 14);
     if (to < from) throw new HttpError(400, 'The end date is before the start date');
 
-    const saves = getSaves(me);
+    const saves = interpret(getSaves(me));
     const profile = tasteProfile(saves, getProfile(db, me));
-    const spots = db.prepare('SELECT * FROM spots').all().map(hydrateSpot);
+    const spots = visibleSpots(me);
     const savedSpots = new Set(saves.filter((s) => s.spot_id).map((s) => s.spot_id));
     const dismissed = db.prepare('SELECT spot_id FROM spot_dismissals WHERE user_id = ?').all(me).map((x) => x.spot_id);
 
@@ -134,6 +143,7 @@ export default function savesRoutes(r, { db }) {
       places: group('place'),
       products: group('product'),
       // What you already saved there and may have forgotten about.
+      canRefreshPosts: !!venueFeed,
       yourSaves: city ? saves.filter((s) => s.city?.toLowerCase() === city.toLowerCase() && !s.spot_id) : [],
       saved: saves.filter((s) => s.spot_id && (!city || !s.city || s.city.toLowerCase() === city.toLowerCase())).map((s) => ({ ...s, spot: hydrateSpot(db.prepare('SELECT * FROM spots WHERE id = ?').get(s.spot_id)) })),
       profileSize: profile.size,
@@ -141,10 +151,84 @@ export default function savesRoutes(r, { db }) {
   });
 
   const getSpot = (req) => {
-    const s = db.prepare('SELECT * FROM spots WHERE id = ?').get(intParam(req.params.id));
-    if (!s) throw new HttpError(404, 'Spot not found');
-    return hydrateSpot(s);
+    const s = hydrateSpot(db.prepare('SELECT * FROM spots WHERE id = ?').get(intParam(req.params.id)));
+    if (!s || (s.added_by && s.added_by !== req.user.id && !friendIds(db, req.user.id).includes(s.added_by))) throw new HttpError(404, 'Spot not found');
+    return s;
   };
+
+  // ----- Events from posts -----
+
+  // Read a pasted or shared post into a draft for the person to check.
+  r.post('/spots/from-post', requireUser, (req, res) => {
+    const text = String(req.body?.text || '').trim();
+    if (!text) throw new HttpError(400, 'Paste the post text');
+    res.json({ draft: parsePost(text, { url: cleanUrl(req.body.url), cities: cities() }) });
+  });
+
+  // Save the checked draft as an event, and into the person's plan.
+  r.post('/spots', requireUser, (req, res) => {
+    const b = req.body || {};
+    const title = String(b.title || '').trim().slice(0, 120);
+    const starts = String(b.starts_at || '');
+    if (!title) throw new HttpError(400, 'Title is required');
+    if (!/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?$/.test(starts)) throw new HttpError(400, 'A date is required (YYYY-MM-DD)');
+    const city = cleanCity(b.city);
+    if (!city) throw new HttpError(400, 'City is required');
+    const url = cleanUrl(b.url);
+    const spot = upsertSpot(db, {
+      kind: 'event',
+      title,
+      city,
+      venue: cleanCity(b.venue),
+      tags: cleanTags(b.tags?.length ? b.tags : autoTag(title, null, null, b.description)),
+      description: b.description ? String(b.description).slice(0, 400) : null,
+      starts_at: starts,
+      ends_at: ISO_DATE.test(b.ends_at) ? b.ends_at : null,
+      price: b.price ? String(b.price).slice(0, 40) : null,
+      url,
+      popularity: 0.2,
+      source: 'post',
+      external_id: `${req.user.id}:${url || `${title}|${starts}|${city}`}`,
+      added_by: req.user.id,
+    });
+    db.prepare(
+      `INSERT OR IGNORE INTO saves (user_id, kind, title, source, url, city, tags, spot_id, external_key)
+       VALUES (?, 'event', ?, 'tastemate', ?,?,?,?,?)`
+    ).run(req.user.id, spot.title, spot.url, spot.city, JSON.stringify(spot.tags), spot.id, `spot:${spot.id}`);
+    res.status(201).json({ spot });
+  });
+
+  // Pull new event posts from followed venue accounts (providers/venue-posts.js).
+  r.post('/spots/refresh-posts', requireUser, ah(async (_req, res) => {
+    if (!venueFeed) throw new HttpError(400, 'No venue feed configured. Set IG_USER_ID, IG_ACCESS_TOKEN and VENUE_ACCOUNTS.');
+    const { posts, errors } = await venueFeed.fetchPosts();
+    const today = new Date().toISOString().slice(0, 10);
+    let added = 0;
+    for (const post of posts) {
+      const d = parsePost(post.text, { url: post.url, cities: cities(), city: post.city, venue: post.venue });
+      // Only posts that announce a dated, upcoming event we can tag.
+      if (!d.starts_at || d.starts_at.slice(0, 10) < today || !d.tags.length || !d.city) continue;
+      const before = db.prepare(`SELECT 1 FROM spots WHERE source = 'venue_post' AND external_id = ?`).get(post.url);
+      upsertSpot(db, { ...d, popularity: 0.25, source: 'venue_post', external_id: post.url });
+      if (!before) added++;
+    }
+    res.json({ posts: posts.length, added, errors });
+  }));
+
+  // ----- Occasions: a whole evening from your taste -----
+  r.get('/occasion', requireUser, (req, res) => {
+    const me = req.user.id;
+    const saves = interpret(getSaves(me));
+    const profile = tasteProfile(saves, getProfile(db, me));
+    const city = homeCity(me);
+    const music = db.prepare(`SELECT * FROM items WHERE medium = 'music' AND status = 'released'`).all().map(hydrateItem);
+    const shop = visibleSpots(me).filter((x) => x.kind !== 'event' && (!x.city || !city || x.city.toLowerCase() === city.toLowerCase()));
+    const theme = req.query.theme != null && req.query.theme !== '' ? Number(req.query.theme) : null;
+    res.json({
+      ...planOccasion({ type: OCCASIONS[req.query.type] ? req.query.type : 'dinner', clusters: findPatterns(saves), theme, profile, saves, music, shop }),
+      city,
+    });
+  });
 
   // Saving a spot makes it a save like any other, so it feeds the graph too.
   r.post('/spots/:id/save', requireUser, (req, res) => {

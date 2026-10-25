@@ -3,7 +3,7 @@
 //   npm run seed -- --demo  → also adds demo friends (maya, sam, jo) and a `demo` account
 import { fileURLToPath } from 'node:url';
 import { openDb, tx, upsertItem, upsertSpot } from '../db.js';
-import { autoTag, cleanTags } from '../taxonomy.js';
+import { autoTag, cleanTags, guessKind } from '../taxonomy.js';
 import { hashPassword } from '../auth.js';
 import { BOOKS, DEMO_UPCOMING, MOVIES, MUSIC, TV } from './catalog.js';
 import { DEMO_SAVES, FRIEND_SPOT_SAVES, demoSpots } from './spots.js';
@@ -108,7 +108,8 @@ export function seedDemo(db, { password = 'demo1234' } = {}) {
        VALUES (?,?,?,?,?,?,?,?,?,?)`
     );
     for (const [source, kind, title, creator, collection, city] of DEMO_SAVES) {
-      addSave.run(ids.demo, kind, title, creator, source, collection, city ?? null, JSON.stringify(cleanTags(autoTag(title, collection))), null, `${source}|${title}`);
+      const tags = cleanTags(autoTag(title, creator, collection));
+      addSave.run(ids.demo, kind === 'other' ? guessKind(tags) : kind, title, creator, source, collection, city ?? null, JSON.stringify(tags), null, `${source}|${title}`);
     }
     for (const [u, titles] of Object.entries(FRIEND_SPOT_SAVES)) {
       for (const t of titles) {

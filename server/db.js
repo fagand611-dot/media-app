@@ -161,7 +161,16 @@ export function openDb(file = process.env.DB_FILE || 'data/tastemate.db') {
   if (file !== ':memory:') fs.mkdirSync(path.dirname(file), { recursive: true });
   const db = new DatabaseSync(file);
   db.exec(SCHEMA);
+  migrate(db);
   return db;
+}
+
+/** Columns added after a table first shipped. */
+function migrate(db) {
+  const cols = new Set(db.prepare('PRAGMA table_info(spots)').all().map((c) => c.name));
+  // Who added a spot from a post (null for curated and feed spots). Their
+  // spots are shown to them and their friends only.
+  if (!cols.has('added_by')) db.exec('ALTER TABLE spots ADD COLUMN added_by INTEGER REFERENCES users(id) ON DELETE CASCADE');
 }
 
 /** Run fn inside a transaction. */
@@ -224,14 +233,15 @@ export function upsertSpot(db, s) {
   const r = db
     .prepare(
       `INSERT INTO spots (kind, title, city, venue, creators, tags, description, starts_at, ends_at, opened_at,
-                          price, url, popularity, source, external_id, is_demo)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+                          price, url, popularity, source, external_id, is_demo, added_by)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
     )
     .run(
       s.kind, s.title, s.city ?? null, s.venue ?? null,
       JSON.stringify(s.creators ?? []), JSON.stringify(s.tags ?? []), s.description ?? null,
       s.starts_at ?? null, s.ends_at ?? null, s.opened_at ?? null, s.price ?? null, s.url ?? null,
-      s.popularity ?? 0.5, s.source ?? 'local', s.external_id != null ? String(s.external_id) : null, s.is_demo ? 1 : 0
+      s.popularity ?? 0.5, s.source ?? 'local', s.external_id != null ? String(s.external_id) : null, s.is_demo ? 1 : 0,
+      s.added_by ?? null
     );
   return hydrateSpot(db.prepare('SELECT * FROM spots WHERE id = ?').get(r.lastInsertRowid));
 }

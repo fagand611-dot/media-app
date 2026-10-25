@@ -55,20 +55,10 @@ function Graph({ g, onTag, active }) {
     <section className="graph">
       {g.patterns.length > 0 && (
         <>
-          <h2><Icon name="graph" /> Patterns across your apps</h2>
+          <h2><Icon name="graph" /> Your taste clusters</h2>
+          <p className="muted small">Read from everything you saved, not just what’s labelled: what says it outright, what means it, and what could be it.</p>
           <div className="patterns">
-            {g.patterns.map((p) => (
-              <article key={p.tags.join()} className="pattern">
-                <h3>{p.tags.join(' · ')}</h3>
-                <p className="muted small">
-                  {p.count} saves: {Object.entries(p.kinds).map(([k, n]) => `${n} ${KIND_LABEL[k].toLowerCase()}`).join(', ')}
-                  {' '}from {Object.keys(p.sources).map((s) => SOURCE_LABEL[s]).join(', ')}
-                </p>
-                <ul className="save-chips">
-                  {p.examples.map((e) => <li key={e.id}><Icon name={SAVE_ICON[e.kind]} size={14} /> {e.title}</li>)}
-                </ul>
-              </article>
-            ))}
+            {g.patterns.map((p) => <Cluster key={p.tags.join()} p={p} />)}
           </div>
         </>
       )}
@@ -83,6 +73,51 @@ function Graph({ g, onTag, active }) {
     </section>
   );
 }
+
+const TIERS = [
+  ['obvious', 'Obvious', 'Says it outright'],
+  ['translated', 'Translated', 'Means it without saying it'],
+  ['possible', 'Could be', 'Goes with it, or matches your habits'],
+];
+
+/** One cluster: its tags, where it shows up, and the evidence in three tiers. */
+function Cluster({ p }) {
+  const [open, setOpen] = useState(false);
+  const seed = p.tags[0];
+  return (
+    <article className="pattern">
+      <h3>{p.tags.join(' · ')}</h3>
+      <p className="muted small">
+        {Object.entries(p.kinds).map(([k, n]) => `${n} ${KIND_LABEL[k].toLowerCase()}`).join(', ')}
+        {' '}from {Object.keys(p.sources).map((s) => SOURCE_LABEL[s]).join(', ')}
+      </p>
+      <div className="tier-bar" aria-label={`Evidence for ${seed}`}>
+        {TIERS.map(([k, label]) => p.tiers[k].length > 0 && (
+          <span key={k} className={`tier tier-${k}`} style={{ flex: p.tiers[k].length }}>{p.tiers[k].length} {label.toLowerCase()}</span>
+        ))}
+      </div>
+      <button className="link-btn" onClick={() => setOpen(!open)} aria-expanded={open}>
+        {open ? 'Hide' : 'Why'} {seed}? <Icon name={open ? 'up' : 'down'} size={14} />
+      </button>
+      {open && TIERS.map(([k, label, hint]) => p.tiers[k].length > 0 && (
+        <div key={k} className="tier-list">
+          <span className={`tier-label tier-${k}`}>{label}</span> <span className="muted small">{hint}</span>
+          <ul>
+            {p.tiers[k].map((e) => (
+              <li key={e.id}>
+                <Icon name={SAVE_ICON[e.kind]} size={14} /> <b>{e.title}</b>
+                {e.via && <span className="muted"> · {viaText(e.via)}</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </article>
+  );
+}
+
+// A bare keyword ("listening bar") reads better quoted.
+const viaText = (via) => (/[→“]| often | your /.test(via) ? via : `says “${via}”`);
 
 function Importer({ onDone }) {
   const [source, setSource] = useState('spotify');

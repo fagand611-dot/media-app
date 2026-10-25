@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadUser } from './auth.js';
 import { createProviders } from './providers/index.js';
+import { createVenuePosts } from './providers/venue-posts.js';
 import authRoutes from './routes/auth.js';
 import itemRoutes from './routes/items.js';
 import discoverRoutes from './routes/discover.js';
@@ -12,7 +13,7 @@ import socialRoutes from './routes/social.js';
 import homeRoutes from './routes/home.js';
 import savesRoutes from './routes/saves.js';
 
-export function createApp({ db, providers = createProviders() }) {
+export function createApp({ db, providers = createProviders(), venueFeed = createVenuePosts() }) {
   const app = express();
   app.disable('x-powered-by');
   // Export files from other apps can be large; everything else stays small.
@@ -21,7 +22,7 @@ export function createApp({ db, providers = createProviders() }) {
   app.use(cookieParser());
   app.use(loadUser(db));
 
-  const ctx = { db, providers };
+  const ctx = { db, providers, venueFeed };
   const api = express.Router();
   authRoutes(api, ctx);
   itemRoutes(api, ctx);
